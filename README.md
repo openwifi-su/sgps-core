@@ -2,6 +2,31 @@
 
 Is a restful API backend for WIFI based location service.
 
+
+## configfile
+
+The config file is a .toml file.
+
+following config parameters have to been defined:
+
+```
+# A sample TOML config file.
+[database]
+db_user = "<USER>"
+db_password = "<PASSWORD>"
+db_name = "<DATABASE NAME>"
+
+[MLS]
+apikey = "<API KEY>"
+
+[old_api]
+path = "<PART TO API>"
+port = <PORT>
+
+[new_api]
+path = "<PART TO API>"
+```
+
 ## Information for developers
 
 The main development process takes place on:
