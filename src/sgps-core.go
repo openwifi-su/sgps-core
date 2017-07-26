@@ -62,6 +62,8 @@ func toDegres(rad float64) (deg float64){
   return
 }
 
+//TODO https://en.wikipedia.org/wiki/Geographical_distance
+// use other referenc objects
 // middle two positions
 func mid_position(lat0 float64, lon0 float64, lat1 float64, lon1 float64) (lat2, lon2 float64){
   var dlon = toRadian(lon1 - lon0)
@@ -96,11 +98,25 @@ func filter_unknown_bssid(arr [][]string, req []string) (ret []string){
 
 // Old position request
 func get_loc_old(w http.ResponseWriter, req *http.Request, config [4]string) {
-  var ret = "Input not valid! "+req.URL.Path
+
+type ret_err struct {
+  Path    string `json:"path"`
+  Count_results uint `json:"count_results"`
+}
+
+type ret_ok struct {
+  Path	string `json:"path"`
+  Lon	float64 `json:"lon"`
+  Lat	float64 `json:"lat"`
+  Count_results uint `json:"count_results"`
+}
+
   var str = html.EscapeString(req.URL.Path)
   // remove all up to the last splash
   var strarr = strings.Split(str, "/")
   str = strarr[len(strarr)-1]
+  var reterr = ret_err{str, 0}
+  var retok = ret_ok{str, 0.0, 0.0, 0}
   // allow only MAC addr without colon and separated by comma
   var validID = regexp.MustCompile(`^([[:xdigit:]]{12},){0,}[[:xdigit:]]{12}[,]?$`)
   if validID.MatchString(str) {
@@ -137,27 +153,48 @@ func get_loc_old(w http.ResponseWriter, req *http.Request, config [4]string) {
     //filter unknown bssids for request seperatly by MLS
     var unknown_bssid = filter_unknown_bssid(retarr, strarr)
     if len(unknown_bssid) > 1 {
-      var mls = mls_request(config[3], unknown_bssid)
-      if mls.Location.Lat != 0 && mls.Location.Lng != 0 {
-	var tmp = []string{"", strconv.FormatFloat(mls.Location.Lat, 'f', 9, 64) , strconv.FormatFloat(mls.Location.Lng, 'f', 9, 64)}
-	retarr = append(retarr, tmp)
+      if len(config[3]) != 0 {
+	var mls = mls_request(config[3], unknown_bssid)
+	if mls.Location.Lat != 0 && mls.Location.Lng != 0 {
+	  var tmp = []string{"", strconv.FormatFloat(mls.Location.Lat, 'f', 9, 64) , strconv.FormatFloat(mls.Location.Lng, 'f', 9, 64)}
+	  retarr = append(retarr, tmp)
+	}
       }
     }
     //TODO save reuested informations if there are unknown e.g. signal qually, MLS stuff...
-    if len(retarr) > 1 {
+    if len(retarr) > 0 {
       lat0, _ := strconv.ParseFloat(retarr[0][1], 64)
       lon0, _ := strconv.ParseFloat(retarr[0][2], 64)
-      for _, elem := range retarr {
-	tmpLat, _ := strconv.ParseFloat(elem[1], 64)
-	tmpLon, _ := strconv.ParseFloat(elem[2], 64)
-	lat0, lon0 = mid_position(lat0, lon0, tmpLat, tmpLon)
+      if len(retarr) > 1 {
+        for _, elem := range retarr {
+	  retok.Count_results = retok.Count_results + 1
+	  tmpLat, _ := strconv.ParseFloat(elem[1], 64)
+	  tmpLon, _ := strconv.ParseFloat(elem[2], 64)
+	  lat0, lon0 = mid_position(lat0, lon0, tmpLat, tmpLon)
+        }
+      } else {
+	retok.Count_results = 1
       }
-      ret = strconv.FormatFloat(lat0,'f', 9,64)+","+strconv.FormatFloat(lon0,'f', 9,64)
-    } else if len(retarr) > 0 {
-      ret = retarr[0][1]+","+retarr[0][2]
+      retok.Lat = lat0
+      retok.Lon = lon0
     }
   }
-  fmt.Fprintf(w, "%q\n", ret)
+  w.Header().Set("Content-Type", "application/json")
+  if retok.Count_results > 0 && retok.Lat != 0 && retok.Lon != 0 {
+    js, err := json.Marshal(retok)
+    if err != nil {
+      http.Error(w, err.Error(), http.StatusInternalServerError)
+      return
+    }
+    w.Write(js)
+  } else {
+    js, err := json.Marshal(reterr)
+    if err != nil {
+      http.Error(w, err.Error(), http.StatusInternalServerError)
+      return
+    }
+    w.Write(js)
+  }
 }
 
 func main() {
@@ -172,10 +209,20 @@ func main() {
   db[0] = viper.GetString("database.db_user")
   db[1] = viper.GetString("database.db_password")
   db[2] = viper.GetString("database.db_name")
+  if len(db[0]) == 0 || len(db[1]) == 0 || len(db[2]) == 0 {
+    fmt.Println("Please check the database informations in the config file")
+    os.Exit(1)
+  }
   db[3] = viper.GetString("MLS.apikey")
   //var path = viper.GetString("new_api.path")
   var old_path = viper.GetString("old_api.path")
+  if len(old_path) == 0 {
+    fmt.Println("Please check the old API part")
+  }
   var port = strconv.Itoa(viper.GetInt("old_api.port"))
+  if len(port) == 0 {
+    fmt.Println("Please check the port config")
+  }
 
   //TODO Multicore able
   http.HandleFunc(old_path, func(w http.ResponseWriter, r *http.Request) {
