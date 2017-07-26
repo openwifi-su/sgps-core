@@ -97,7 +97,7 @@ func filter_unknown_bssid(arr [][]string, req []string) (ret []string){
 }
 
 // Old position request
-func get_loc_old(w http.ResponseWriter, req *http.Request, config [4]string) {
+func get_loc_old(w http.ResponseWriter, req *http.Request, config [5]string) {
 
 type ret_err struct {
   Path    string `json:"path"`
@@ -136,7 +136,7 @@ type ret_ok struct {
     db, err := sql.Open("postgres", dbinfo)
     if err != nil { panic(err) }
     //TODO select quallity as well
-    q := "SELECT BSSID, LAT, LON FROM bssid WHERE BSSID IN ("+str+")"
+    q := "SELECT BSSID, LAT, LON FROM "+config[3]+" WHERE BSSID IN ("+str+")"
     rows, err := db.Query(q)
     if err != nil { panic(err) }
     defer db.Close()
@@ -153,8 +153,8 @@ type ret_ok struct {
     //filter unknown bssids for request seperatly by MLS
     var unknown_bssid = filter_unknown_bssid(retarr, strarr)
     if len(unknown_bssid) > 1 {
-      if len(config[3]) != 0 {
-	var mls = mls_request(config[3], unknown_bssid)
+      if len(config[4]) != 0 {
+	var mls = mls_request(config[4], unknown_bssid)
 	if mls.Location.Lat != 0 && mls.Location.Lng != 0 {
 	  var tmp = []string{"", strconv.FormatFloat(mls.Location.Lat, 'f', 9, 64) , strconv.FormatFloat(mls.Location.Lng, 'f', 9, 64)}
 	  retarr = append(retarr, tmp)
@@ -205,15 +205,16 @@ func main() {
     fmt.Println("Config file not found...")
     os.Exit(1)
   }
-  var db [4]string
+  var db [5]string
   db[0] = viper.GetString("database.db_user")
   db[1] = viper.GetString("database.db_password")
   db[2] = viper.GetString("database.db_name")
-  if len(db[0]) == 0 || len(db[1]) == 0 || len(db[2]) == 0 {
+  db[3] = viper.GetString("database.table_name")
+  if len(db[0]) == 0 || len(db[1]) == 0 || len(db[2]) == 0 || len(db[3]) == 0 {
     fmt.Println("Please check the database informations in the config file")
     os.Exit(1)
   }
-  db[3] = viper.GetString("MLS.apikey")
+  db[4] = viper.GetString("MLS.apikey")
   //var path = viper.GetString("new_api.path")
   var old_path = viper.GetString("old_api.path")
   if len(old_path) == 0 {
