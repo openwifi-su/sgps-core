@@ -12,6 +12,7 @@ import (
   "io/ioutil"
   "database/sql"
   "fmt"
+  _ "github.com/go-sql-driver/mysql"
   _ "github.com/lib/pq"
   "github.com/spf13/viper"
   "math"
@@ -19,11 +20,11 @@ import (
 )
 
 type MLS struct {
-	Location struct {
-		Lat float64 `json:"lat"`
-		Lng float64 `json:"lng"`
-	} `json:"location"`
-	Accuracy float64 `json:"accuracy"`
+  Location struct {
+    Lat float64 `json:"lat"`
+    Lng float64 `json:"lng"`
+  } `json:"location"`
+  Accuracy float64 `json:"accuracy"`
 }
 
 func mls_request(apikey string, bssids []string) (ret MLS){
@@ -97,19 +98,19 @@ func filter_unknown_bssid(arr [][]string, req []string) (ret []string){
 }
 
 // Old position request
-func get_loc_old(w http.ResponseWriter, req *http.Request, config [5]string) {
+func get_loc_old(w http.ResponseWriter, req *http.Request, dbtype string, config [5]string) {
 
-type ret_err struct {
-  Path    string `json:"path"`
-  Count_results uint `json:"count_results"`
-}
+  type ret_err struct {
+    Path    string `json:"path"`
+    Count_results uint `json:"count_results"`
+  }
 
-type ret_ok struct {
-  Path	string `json:"path"`
-  Lon	float64 `json:"lon"`
-  Lat	float64 `json:"lat"`
-  Count_results uint `json:"count_results"`
-}
+  type ret_ok struct {
+    Path	string `json:"path"`
+    Lon	float64 `json:"lon"`
+    Lat	float64 `json:"lat"`
+    Count_results uint `json:"count_results"`
+  }
 
   var str = html.EscapeString(req.URL.Path)
   // remove all up to the last splash
@@ -131,9 +132,14 @@ type ret_ok struct {
       str = str[:last]
     }
     // Open DB
-    dbinfo := fmt.Sprintf("user=%s password=%s dbname=%s sslmode=disable",
-    config[0], config[1], config[2])
-    db, err := sql.Open("postgres", dbinfo)
+    var dbinfo string
+    if dbtype == "postgres" {
+      dbinfo = fmt.Sprintf("user=%s password=%s dbname=%s sslmode=disable",
+      config[0], config[1], config[2])
+    } else {
+      dbinfo = fmt.Sprintf("%s:%s@/%s", config[0], config[1], config[2])
+    }
+    db, err := sql.Open(dbtype, dbinfo)
     if err != nil { panic(err) }
     //TODO select quallity as well
     q := "SELECT BSSID, LAT, LON FROM "+config[3]+" WHERE BSSID IN ("+str+")"
@@ -198,18 +204,28 @@ type ret_ok struct {
 }
 
 func main() {
-  viper.SetConfigName("sgps")
-  viper.AddConfigPath("config")
+  viper.SetConfigName("config")
+  viper.AddConfigPath("/etc/sgps/")
   err := viper.ReadInConfig()
   if err != nil {
     fmt.Println("Config file not found...")
     os.Exit(1)
   }
+  var dbtype = "postgres"
   var db [5]string
-  db[0] = viper.GetString("database.db_user")
-  db[1] = viper.GetString("database.db_password")
-  db[2] = viper.GetString("database.db_name")
-  db[3] = viper.GetString("database.table_name")
+  db[0] = viper.GetString("database.psql_user")
+  db[1] = viper.GetString("database.psql_password")
+  db[2] = viper.GetString("database.psql_name")
+  db[3] = viper.GetString("database.psql_tablename")
+  if len(db[0]) == 0 || len(db[1]) == 0 || len(db[2]) == 0 || len(db[3]) == 0 {
+    dbtype = "mysql"
+  }
+  if dbtype == "mysql" {
+    db[0] = viper.GetString("database.msql_user")
+    db[1] = viper.GetString("database.msql_password")
+    db[2] = viper.GetString("database.msql_name")
+    db[3] = viper.GetString("database.msql_tablename")
+  }
   if len(db[0]) == 0 || len(db[1]) == 0 || len(db[2]) == 0 || len(db[3]) == 0 {
     fmt.Println("Please check the database informations in the config file")
     os.Exit(1)
@@ -227,7 +243,7 @@ func main() {
 
   //TODO Multicore able
   http.HandleFunc(old_path, func(w http.ResponseWriter, r *http.Request) {
-    get_loc_old(w, r, db)
+    get_loc_old(w, r, dbtype, db)
   })
   log.Fatal(http.ListenAndServe(":"+port, nil))
 }
