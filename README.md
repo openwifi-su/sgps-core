@@ -11,10 +11,19 @@ following config parameters have to been defined:
 
 ```
 # A sample TOML config file.
+# For Postgresql
 [database]
-db_user = "<USER>"
-db_password = "<PASSWORD>"
-db_name = "<DATABASE NAME>"
+psql_user = "<USER>"
+psql_password = "<PASSWORD>"
+psql_name = "<DATABASE NAME>"
+psql_tablename = "<TABLENAME>"
+# For MySQL
+[database]
+msql_user = "<USER>"
+msql_password = "<PASSWORD>"
+msql_name = "<DATABASE NAME>"
+msql_tablename = "<TABLENAME>"
+# If bouth Postgresql and MySQL defined sgps will prefrare Postgresql
 
 [MLS]
 apikey = "<API KEY>"
